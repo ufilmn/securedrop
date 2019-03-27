@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import binascii
 import gzip
 import os
 import re
@@ -6,6 +7,9 @@ import tempfile
 import zipfile
 
 from flask import current_app
+from hashlib import sha256
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from werkzeug.utils import secure_filename
 
 from secure_tempfile import SecureTemporaryFile
@@ -194,3 +198,24 @@ class Storage:
                     # Only return new filename if successful
                     return new_filename
         return orig_filename
+
+
+def add_checksum_for_file(db_model, model_id, file_path, db_uri):
+    # we have to create our own DB session because there is no app context
+    session = sessionmaker(bind=create_engine(db_uri))()
+    db_obj = session.query(db_model).filter_by(id=model_id).one()
+
+    hasher = sha256()
+    with open(file_path, 'rb') as f:
+        while True:
+            read_bytes = f.read(4096)
+            if not read_bytes:
+                break
+            hasher.update(read_bytes)
+
+    digest = binascii.hexlify(hasher.digest()).decode('utf-8')
+    digest_str = u'sha256:' + digest
+    db_obj.checksum = digest_str
+
+    session.add(db_obj)
+    session.commit()

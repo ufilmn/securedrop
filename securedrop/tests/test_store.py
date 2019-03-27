@@ -4,12 +4,15 @@ import io
 import pytest
 import re
 import store
+import uuid
 import zipfile
 
 os.environ['SECUREDROP_ENV'] = 'test'  # noqa
 import utils
 
-from store import Storage
+from db import db
+from models import Submission
+from store import Storage, add_checksum_for_file
 
 
 def create_file_in_source_dir(config, filesystem_id, filename):
@@ -163,3 +166,30 @@ def test_rename_submission_with_invalid_filename(journalist_app):
     # None of the above files exist, so we expect the attempt to rename
     # the submission to fail and the original filename to be returned.
     assert original_filename == returned_filename
+
+
+# using the journalist_app fixture to get a valid session
+def test_add_checksum_for_file(journalist_app, test_source):
+    '''
+    Check that when we execute the `add_checksum_for_file` function, the database object is
+    correctly updated with the actual hash of the file.
+    '''
+    target_file_path = journalist_app.storage.path(test_source['filesystem_id'],
+                                                   '1-foo-msg.gpg')
+    test_message = b'hash me!'
+    expected_hash = 'f1df4a6d8659471333f7f6470d593e0911b4d487856d88c83d2d187afa195927'
+
+    with open(target_file_path, 'wb') as f:
+        f.write(test_message)
+
+    submission = Submission(test_source['source'], target_file_path)
+    db.session.add(submission)
+    db.session.commit()
+
+    add_checksum_for_file(Submission,
+                          submission.id,
+                          target_file_path,
+                          journalist_app.config['SQLALCHEMY_DATABASE_URI'])
+
+    db.session.refresh(submission)
+    assert submission.checksum == 'sha256:' + expected_hash
