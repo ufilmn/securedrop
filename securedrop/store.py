@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from werkzeug.utils import secure_filename
 
 from secure_tempfile import SecureTemporaryFile
+from worker import rq_worker_queue
 
 
 VALIDATE_FILENAME = re.compile(
@@ -198,6 +199,22 @@ class Storage:
                     # Only return new filename if successful
                     return new_filename
         return orig_filename
+
+
+def async_add_checksum_for_file(db_obj):
+    return add_checksum_for_file(
+        type(db_obj),
+        db_obj.id,
+        current_app.storage.path(db_obj.source.filesystem_id, db_obj.filename),
+        current_app.config['SQLALCHEMY_DATABASE_URI'],
+    )
+    return rq_worker_queue.enqueue(
+        add_checksum_for_file,
+        type(db_obj),
+        db_obj.id,
+        current_app.storage.path(db_obj.source.filesystem_id, db_obj.filename),
+        current_app.config['SQLALCHEMY_DATABASE_URI'],
+    )
 
 
 def add_checksum_for_file(db_model, model_id, file_path, db_uri):

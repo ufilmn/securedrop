@@ -152,80 +152,74 @@ def journalist_app(config):
 
 @pytest.fixture(scope='function')
 def test_journo(journalist_app):
-    with journalist_app.app_context():
-        user, password = utils.db_helper.init_journalist(is_admin=False)
-        username = user.username
-        otp_secret = user.otp_secret
-        return {'journalist': user,
-                'username': username,
-                'password': password,
-                'otp_secret': otp_secret,
-                'id': user.id,
-                'uuid': user.uuid}
+    user, password = utils.db_helper.init_journalist(is_admin=False)
+    username = user.username
+    otp_secret = user.otp_secret
+    return {'journalist': user,
+            'username': username,
+            'password': password,
+            'otp_secret': otp_secret,
+            'id': user.id,
+            'uuid': user.uuid}
 
 
 @pytest.fixture(scope='function')
 def test_admin(journalist_app):
-    with journalist_app.app_context():
-        user, password = utils.db_helper.init_journalist(is_admin=True)
-        username = user.username
-        otp_secret = user.otp_secret
-        return {'admin': user,
-                'username': username,
-                'password': password,
-                'otp_secret': otp_secret,
-                'id': user.id}
+    user, password = utils.db_helper.init_journalist(is_admin=True)
+    username = user.username
+    otp_secret = user.otp_secret
+    return {'admin': user,
+            'username': username,
+            'password': password,
+            'otp_secret': otp_secret,
+            'id': user.id}
 
 
 @pytest.fixture(scope='function')
 def test_source(journalist_app):
-    with journalist_app.app_context():
-        source, codename = utils.db_helper.init_source()
-        return {'source': source,
-                'codename': codename,
-                'filesystem_id': source.filesystem_id,
-                'uuid': source.uuid,
-                'id': source.id}
+    source, codename = utils.db_helper.init_source()
+    return {'source': source,
+            'codename': codename,
+            'filesystem_id': source.filesystem_id,
+            'uuid': source.uuid,
+            'id': source.id}
 
 
 @pytest.fixture(scope='function')
 def test_submissions(journalist_app):
-    with journalist_app.app_context():
-        source, codename = utils.db_helper.init_source()
-        utils.db_helper.submit(source, 2)
-        return {'source': source,
-                'codename': codename,
-                'filesystem_id': source.filesystem_id,
-                'uuid': source.uuid,
-                'submissions': source.submissions}
+    source, codename = utils.db_helper.init_source()
+    utils.db_helper.submit(source, 2)
+    return {'source': source,
+            'codename': codename,
+            'filesystem_id': source.filesystem_id,
+            'uuid': source.uuid,
+            'submissions': source.submissions}
 
 
 @pytest.fixture(scope='function')
 def test_files(journalist_app, test_journo):
-    with journalist_app.app_context():
-        source, codename = utils.db_helper.init_source()
-        utils.db_helper.submit(source, 2)
-        utils.db_helper.reply(test_journo['journalist'], source, 1)
-        return {'source': source,
-                'codename': codename,
-                'filesystem_id': source.filesystem_id,
-                'uuid': source.uuid,
-                'submissions': source.submissions,
-                'replies': source.replies}
+    source, codename = utils.db_helper.init_source()
+    utils.db_helper.submit(source, 2)
+    utils.db_helper.reply(test_journo['journalist'], source, 1)
+    return {'source': source,
+            'codename': codename,
+            'filesystem_id': source.filesystem_id,
+            'uuid': source.uuid,
+            'submissions': source.submissions,
+            'replies': source.replies}
 
 
 @pytest.fixture(scope='function')
 def journalist_api_token(journalist_app, test_journo):
-    with journalist_app.test_client() as app:
-        valid_token = TOTP(test_journo['otp_secret']).now()
-        response = app.post(url_for('api.get_token'),
-                            data=json.dumps(
-                                {'username': test_journo['username'],
-                                 'passphrase': test_journo['password'],
-                                 'one_time_code': valid_token}),
-                            headers=utils.api_helper.get_api_headers())
-        observed_response = json.loads(response.data)
-        return observed_response['token']
+    valid_token = TOTP(test_journo['otp_secret']).now()
+    response = app.post(url_for('api.get_token'),
+                        data=json.dumps(
+                            {'username': test_journo['username'],
+                             'passphrase': test_journo['password'],
+                             'one_time_code': valid_token}),
+                        headers=utils.api_helper.get_api_headers())
+    observed_response = json.loads(response.data)
+    return observed_response['token']
 
 
 def _start_test_rqworker(config):

@@ -11,8 +11,8 @@ os.environ['SECUREDROP_ENV'] = 'test'  # noqa
 import utils
 
 from db import db
-from models import Submission
-from store import Storage, add_checksum_for_file
+from models import Submission, Reply
+from store import Storage, add_checksum_for_file, async_add_checksum_for_file
 
 
 def create_file_in_source_dir(config, filesystem_id, filename):
@@ -168,11 +168,13 @@ def test_rename_submission_with_invalid_filename(journalist_app):
     assert original_filename == returned_filename
 
 
-# using the journalist_app fixture to get a valid session
-def test_add_checksum_for_file(journalist_app, test_source):
+@pytest.mark.parametrize('db_model', [Submission, Reply])
+def test_add_checksum_for_file(journalist_app, test_source, test_journo, db_model):
     '''
     Check that when we execute the `add_checksum_for_file` function, the database object is
     correctly updated with the actual hash of the file.
+
+    Uses the `journalist_app` fixture to get a DB session.
     '''
     target_file_path = journalist_app.storage.path(test_source['filesystem_id'],
                                                    '1-foo-msg.gpg')
@@ -182,14 +184,52 @@ def test_add_checksum_for_file(journalist_app, test_source):
     with open(target_file_path, 'wb') as f:
         f.write(test_message)
 
-    submission = Submission(test_source['source'], target_file_path)
-    db.session.add(submission)
-    db.session.commit()
+    if isinstance(db_model, Submission):
+        db_obj = Submission(test_source['source'], target_file_path)
+    else:
+        db_obj = Reply(test_journo['journalist'], test_source['source'], target_file_path)
 
-    add_checksum_for_file(Submission,
-                          submission.id,
+    db.session.add(db_obj)
+    db.session.commit()
+    db_obj_id = db_obj.id
+
+    add_checksum_for_file(db_model,
+                          db_obj_id,
                           target_file_path,
                           journalist_app.config['SQLALCHEMY_DATABASE_URI'])
 
-    db.session.refresh(submission)
-    assert submission.checksum == 'sha256:' + expected_hash
+    # requery to get a new object
+    db_obj = db.session.query(db_model).filter_by(id=db_obj_id).one()
+    assert db_obj.checksum == 'sha256:' + expected_hash
+    
+
+@pytest.mark.parametrize('db_model', [Submission, Reply])
+def test_async_add_checksum_for_file(journalist_app, test_source, test_journo, db_model):
+    '''
+    Check that when we execute the `add_checksum_for_file` function, the database object is
+    correctly updated with the actual hash of the file.
+
+    Uses the `journalist_app` fixture to get a DB session.
+    '''
+    target_file_path = journalist_app.storage.path(test_source['filesystem_id'],
+                                                   '1-foo-msg.gpg')
+    test_message = b'hash me!'
+    expected_hash = 'f1df4a6d8659471333f7f6470d593e0911b4d487856d88c83d2d187afa195927'
+
+    with open(target_file_path, 'wb') as f:
+        f.write(test_message)
+
+    if isinstance(db_model, Submission):
+        db_obj = Submission(test_source['source'], target_file_path)
+    else:
+        db_obj = Reply(test_journo['journalist'], test_source['source'], target_file_path)
+
+    db.session.add(db_obj)
+    db.session.commit()
+    db_obj_id = db_obj.id
+
+    job = async_add_checksum_for_file(db_obj)
+
+    # requery to get a new object
+    db_obj = db.session.query(db_model).filter_by(id=db_obj_id).one()
+    assert db_obj.checksum == 'sha256:' + expected_hash
